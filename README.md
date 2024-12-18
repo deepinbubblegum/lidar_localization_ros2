@@ -39,6 +39,9 @@ Green: path, Red: map
 |scan_periad|double|0.1|scan period of input cloud[sec]|
 |use_pcd_map|bool|false|whether pcd_map is used or not|
 |map_path|string|"/map/map.pcd"|pcd_map file path|
+|map_offset_x|double|0.0|x-offset pcd_map[m]|
+|map_offset_y|double|0.0|y-offset pcd_map[m]|
+|map_offset_z|double|0.0|z-offset pcd_map[m]|
 |set_initial_pose|bool|false|whether or not to set the default value in the param file|
 |initial_pose_x|double|0.0|x-coordinate of the initial pose value[m]|
 |initial_pose_y|double|0.0|y-coordinate of the initial pose value[m]|
