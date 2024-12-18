@@ -62,6 +62,7 @@ CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
 
   pose_pub_->on_activate();
   path_pub_->on_activate();
+  odom_pub_->on_activate();
   initial_map_pub_->on_activate();
 
   if (set_initial_pose_)
@@ -92,7 +93,7 @@ CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
     pcl::PointCloud<pcl::PointXYZI>::Ptr map_cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
     pcl::io::loadPCDFile(map_path_, *map_cloud_ptr);
     RCLCPP_INFO(get_logger(), "Map Size %ld", map_cloud_ptr->size());
-    
+
     // Offset the map
     // apply offset to the map
     for (auto &point : map_cloud_ptr->points)
@@ -133,6 +134,7 @@ CallbackReturn PCLLocalization::on_deactivate(const rclcpp_lifecycle::State &)
 
   pose_pub_->on_deactivate();
   path_pub_->on_deactivate();
+  odom_pub_->on_deactivate();
   initial_map_pub_->on_deactivate();
 
   RCLCPP_INFO(get_logger(), "Deactivating end");
@@ -146,6 +148,7 @@ CallbackReturn PCLLocalization::on_cleanup(const rclcpp_lifecycle::State &)
   initial_map_pub_.reset();
   path_pub_.reset();
   pose_pub_.reset();
+  odom_pub_.reset();
   odom_sub_.reset();
   cloud_sub_.reset();
   imu_sub_.reset();
@@ -238,6 +241,10 @@ void PCLLocalization::initializePubSub()
 
   path_pub_ = create_publisher<nav_msgs::msg::Path>(
       "path",
+      rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
+
+  odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(
+      "pcl_odom",
       rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
 
   initial_map_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -345,7 +352,7 @@ void PCLLocalization::mapReceived(const sensor_msgs::msg::PointCloud2::SharedPtr
 
   if (msg->header.frame_id != global_frame_id_)
   {
-    RCLCPP_WARN(this->get_logger(), "map_frame_id does not match　global_frame_id");
+    RCLCPP_WARN(this->get_logger(), "map_frame_id does not match global_frame_id");
     return;
   }
 
@@ -602,4 +609,56 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     std::cout << "delta_angle:" << delta_angle * 180 / M_PI << "[deg]" << std::endl;
     std::cout << "-----------------------------------------------------" << std::endl;
   }
+
+  if (path_ptr_->poses.size() < 2)
+  {
+    return;
+  }
+  // calculate velocity and angular velocity from geometry of the pose
+
+  // find delta time
+  double current_time = msg->header.stamp.sec +
+                        msg->header.stamp.nanosec * 1e-9;
+
+  double previous_time = path_ptr_->poses[path_ptr_->poses.size() - 2].header.stamp.sec +
+                         path_ptr_->poses[path_ptr_->poses.size() - 2].header.stamp.nanosec * 1e-9;
+  
+  double dt = current_time - previous_time;
+
+  Eigen::Vector3d current_position{
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x,
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y,
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z};
+  Eigen::Quaterniond current_orientation{
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation.w,
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation.x,
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation.y,
+      corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation.z};
+
+  Eigen::Vector3d previous_position{
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.x,
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.y,
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.z};
+  Eigen::Quaterniond previous_orientation{
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.orientation.w,
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.orientation.x,
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.orientation.y,
+      path_ptr_->poses[path_ptr_->poses.size() - 2].pose.orientation.z};
+
+  Eigen::Vector3d velocity = (current_position - previous_position) / dt;
+  Eigen::Quaterniond delta_quat = previous_orientation.inverse() * current_orientation;
+  Eigen::Vector3d angular_velocity = 2.0 * acos(delta_quat.w()) * delta_quat.vec() / dt;
+
+  nav_msgs::msg::Odometry odometry;
+  odometry.header.stamp = msg->header.stamp;
+  odometry.header.frame_id = odom_frame_id_;
+  odometry.child_frame_id = base_frame_id_;
+  odometry.pose.pose = corrent_pose_with_cov_stamped_ptr_->pose.pose;
+  odometry.twist.twist.linear.x = velocity.x();
+  odometry.twist.twist.linear.y = velocity.y();
+  odometry.twist.twist.linear.z = velocity.z();
+  odometry.twist.twist.angular.x = angular_velocity.x();
+  odometry.twist.twist.angular.y = angular_velocity.y();
+  odometry.twist.twist.angular.z = angular_velocity.z();
+  odom_pub_->publish(odometry);
 }
