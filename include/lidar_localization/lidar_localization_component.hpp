@@ -90,13 +90,17 @@ public:
   nav_msgs::msg::Path::SharedPtr path_ptr_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr last_scan_ptr_;
 
+  geometry_msgs::msg::TransformStamped base2lidar;
+  
   bool map_recieved_{false};
   bool initialpose_recieved_{false};
 
   // parameters
+  bool publish_tf_;
   std::string global_frame_id_;
   std::string odom_frame_id_;
   std::string base_frame_id_;
+  std::string lidar_frame_id;
   std::string registration_method_;
   double scan_max_range_;
   double scan_min_range_;
@@ -108,6 +112,9 @@ public:
   double voxel_leaf_size_;
   bool use_pcd_map_{false};
   std::string map_path_;
+  double map_offset_x_;
+  double map_offset_y_;
+  double map_offset_z_;
   bool set_initial_pose_{false};
   double initial_pose_x_;
   double initial_pose_y_;

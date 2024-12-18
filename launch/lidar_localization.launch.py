@@ -24,7 +24,7 @@ def generate_launch_description():
         name='lidar_tf',
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments=['0','0','0','0','0','0','1','base_link','velodyne']
+        arguments=['0','0','0','0','0','0','1','base_link','rslidar']
         )
 
     imu_tf = launch_ros.actions.Node(
@@ -47,7 +47,7 @@ def generate_launch_description():
         package='lidar_localization_ros2',
         executable='lidar_localization_node',
         parameters=[localization_param_dir],
-        remappings=[('/cloud','/velodyne_points')],
+        remappings=[('/cloud','/rslidar_points')],
         output='screen')
 
     to_inactive = launch.actions.EmitEvent(
