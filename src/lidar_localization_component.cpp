@@ -587,20 +587,28 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
         return;
     }
 
+    // copy final transformation
+    Eigen::Matrix4f final_transformation_pose = final_transformation;
     // Update pose information offset map_to_odom_transform
-    final_transformation(0, 3) = final_transformation(0, 3) + map_to_odom_transform.transform.translation.x;
-    final_transformation(1, 3) = final_transformation(1, 3) + map_to_odom_transform.transform.translation.y;
-    final_transformation(2, 3) = final_transformation(2, 3) + map_to_odom_transform.transform.translation.z;
-
+    final_transformation_pose(0, 3) = final_transformation_pose(0, 3) + map_to_odom_transform.transform.translation.x;
+    final_transformation_pose(1, 3) = final_transformation_pose(1, 3) + map_to_odom_transform.transform.translation.y;
+    final_transformation_pose(2, 3) = final_transformation_pose(2, 3) + map_to_odom_transform.transform.translation.z;
 
     geometry_msgs::msg::Quaternion quat_msg = tf2::toMsg(quat_eig);
     corrent_pose_with_cov_stamped_ptr_->header.stamp = msg->header.stamp;
     corrent_pose_with_cov_stamped_ptr_->header.frame_id = odom_frame_id_;
-    corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x = final_transformation(0, 3);
-    corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y = final_transformation(1, 3);
-    corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z = final_transformation(2, 3);
+    corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x = final_transformation_pose(0, 3);
+    corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y = final_transformation_pose(1, 3);
+    corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z = final_transformation_pose(2, 3);
     corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation = quat_msg;
     pose_pub_->publish(*corrent_pose_with_cov_stamped_ptr_);
+
+    corrent_pose_with_cov_stamped_ptr_pose_->header.stamp = msg->header.stamp;
+    corrent_pose_with_cov_stamped_ptr_pose_->header.frame_id = odom_frame_id_;
+    corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.position.x = final_transformation(0, 3);
+    corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.position.y = final_transformation(1, 3);
+    corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.position.z = final_transformation(2, 3);
+    corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.orientation = quat_msg;
 
     // Publish the transform if required
     if (publish_tf_)
@@ -609,9 +617,9 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
         transform_stamped.header.stamp = msg->header.stamp;
         transform_stamped.header.frame_id = odom_frame_id_;
         transform_stamped.child_frame_id = base_frame_id_;
-        transform_stamped.transform.translation.x = final_transformation(0, 3);
-        transform_stamped.transform.translation.y = final_transformation(1, 3);
-        transform_stamped.transform.translation.z = final_transformation(2, 3);
+        transform_stamped.transform.translation.x = final_transformation_pose(0, 3);
+        transform_stamped.transform.translation.y = final_transformation_pose(1, 3);
+        transform_stamped.transform.translation.z = final_transformation_pose(2, 3);
         transform_stamped.transform.rotation = quat_msg;
         broadcaster_.sendTransform(transform_stamped);
     }
@@ -620,7 +628,7 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     geometry_msgs::msg::PoseStamped::SharedPtr pose_stamped_ptr(new geometry_msgs::msg::PoseStamped);
     pose_stamped_ptr->header.stamp = msg->header.stamp;
     pose_stamped_ptr->header.frame_id = base_frame_id_;
-    pose_stamped_ptr->pose = corrent_pose_with_cov_stamped_ptr_->pose.pose;
+    pose_stamped_ptr->pose = corrent_pose_with_cov_stamped_ptr_pose_->pose.pose;
     path_ptr_->poses.push_back(*pose_stamped_ptr);
     path_pub_->publish(*path_ptr_);
     last_scan_ptr_ = msg;
@@ -643,9 +651,9 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
         double dt = current_time - previous_time;
 
         Eigen::Vector3d current_position(
-            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x,
-            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y,
-            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z);
+            corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.position.x,
+            corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.position.y,
+            corrent_pose_with_cov_stamped_ptr_pose_->pose.pose.position.z);
         Eigen::Vector3d previous_position(
             path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.x,
             path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.y,
@@ -657,7 +665,7 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
         odometry.header.stamp = msg->header.stamp;
         odometry.header.frame_id = odom_frame_id_;
         odometry.child_frame_id = base_frame_id_;
-        odometry.pose.pose = corrent_pose_with_cov_stamped_ptr_->pose.pose;
+        odometry.pose.pose = corrent_pose_with_cov_stamped_ptr_pose_->pose.pose;
         odometry.twist.twist.linear.x = velocity.x();
         odometry.twist.twist.linear.y = velocity.y();
         odometry.twist.twist.linear.z = velocity.z();
