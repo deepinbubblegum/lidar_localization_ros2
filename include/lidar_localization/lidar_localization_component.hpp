@@ -33,7 +33,7 @@
 #include <pclomp/voxel_grid_covariance_omp_impl.hpp>
 #include <pclomp/gicp_omp.h>
 #include <pclomp/gicp_omp_impl.hpp>
-
+#include <pcl/memory.h>
 #include "lidar_localization/lidar_undistortion.hpp"
 
 using namespace std::chrono_literals;

@@ -51,6 +51,8 @@ CallbackReturn PCLLocalization::on_configure(const rclcpp_lifecycle::State &)
 
   path_ptr_ = std::make_shared<nav_msgs::msg::Path>();
   path_ptr_->header.frame_id = global_frame_id_;
+  path_ptr_unoffset_ = std::make_shared<nav_msgs::msg::Path>();
+  path_ptr_unoffset_->header.frame_id = global_frame_id_;
 
   RCLCPP_INFO(get_logger(), "Configuring end");
   return CallbackReturn::SUCCESS;
@@ -84,6 +86,7 @@ CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
     pose_stamped->header.frame_id = global_frame_id_;
     pose_stamped->pose = msg->pose.pose;
     path_ptr_->poses.push_back(*pose_stamped);
+    path_ptr_unoffset_ = path_ptr_;
 
     initialPoseReceived(msg);
   }
@@ -623,6 +626,16 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     pose_stamped_ptr->pose = corrent_pose_with_cov_stamped_ptr_->pose.pose;
     path_ptr_->poses.push_back(*pose_stamped_ptr);
     path_pub_->publish(*path_ptr_);
+
+    geometry_msgs::msg::PoseStamped::SharedPtr pose_stamped_ptr_unoffset(new geometry_msgs::msg::PoseStamped);
+    pose_stamped_ptr_unoffset->header.stamp = msg->header.stamp;
+    pose_stamped_ptr_unoffset->header.frame_id = base_frame_id_;
+    pose_stamped_ptr_unoffset->pose.position.x = final_transformation(0, 3) - map_to_odom_transform.transform.translation.x;
+    pose_stamped_ptr_unoffset->pose.position.y = final_transformation(1, 3) - map_to_odom_transform.transform.translation.y;
+    pose_stamped_ptr_unoffset->pose.position.z = final_transformation(2, 3) - map_to_odom_transform.transform.translation.z;
+    pose_stamped_ptr_unoffset->pose.orientation = quat_msg;
+    path_ptr_unoffset_->poses.push_back(*pose_stamped_ptr_unoffset);
+
     last_scan_ptr_ = msg;
 
     // Debug information
@@ -635,21 +648,22 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     }
 
     // Compute velocity and angular velocity
-    if (path_ptr_->poses.size() >= 2)
+    if (path_ptr_unoffset_->poses.size() >= 2)
     {
         double current_time = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
-        double previous_time = path_ptr_->poses[path_ptr_->poses.size() - 2].header.stamp.sec +
-                               path_ptr_->poses[path_ptr_->poses.size() - 2].header.stamp.nanosec * 1e-9;
+        double previous_time = path_ptr_unoffset_->poses[path_ptr_unoffset_->poses.size() - 2].header.stamp.sec +
+                               path_ptr_unoffset_->poses[path_ptr_unoffset_->poses.size() - 2].header.stamp.nanosec * 1e-9;
         double dt = current_time - previous_time;
 
         Eigen::Vector3d current_position(
-            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x,
-            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y,
-            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z);
+            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x - map_to_odom_transform.transform.translation.x,
+            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y - map_to_odom_transform.transform.translation.y,
+            corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z - map_to_odom_transform.transform.translation.z
+            );
         Eigen::Vector3d previous_position(
-            path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.x,
-            path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.y,
-            path_ptr_->poses[path_ptr_->poses.size() - 2].pose.position.z);
+            path_ptr_unoffset_->poses[path_ptr_unoffset_->poses.size() - 2].pose.position.x,
+            path_ptr_unoffset_->poses[path_ptr_unoffset_->poses.size() - 2].pose.position.y,
+            path_ptr_unoffset_->poses[path_ptr_unoffset_->poses.size() - 2].pose.position.z);
 
         Eigen::Vector3d velocity = (current_position - previous_position) / dt;
 
@@ -657,7 +671,11 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
         odometry.header.stamp = msg->header.stamp;
         odometry.header.frame_id = odom_frame_id_;
         odometry.child_frame_id = base_frame_id_;
-        odometry.pose.pose = corrent_pose_with_cov_stamped_ptr_->pose.pose;
+        // odometry.pose.pose = corrent_pose_with_cov_stamped_ptr_->pose.pose;
+        odometry.pose.pose.position.x = corrent_pose_with_cov_stamped_ptr_->pose.pose.position.x - map_to_odom_transform.transform.translation.x;
+        odometry.pose.pose.position.y = corrent_pose_with_cov_stamped_ptr_->pose.pose.position.y - map_to_odom_transform.transform.translation.y;
+        odometry.pose.pose.position.z = corrent_pose_with_cov_stamped_ptr_->pose.pose.position.z - map_to_odom_transform.transform.translation.z;
+        odometry.pose.pose.orientation = corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation;
         odometry.twist.twist.linear.x = velocity.x();
         odometry.twist.twist.linear.y = velocity.y();
         odometry.twist.twist.linear.z = velocity.z();
